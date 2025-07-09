@@ -1,0 +1,74 @@
+"""
+PromptBlend — Dynamically stitch prompt fragments to guide LLM output.
+Requires:  pip install openai  (Python ≥3.9)
+"""
+
+from __future__ import annotations
+from typing import List, Dict, Optional
+import os
+import openai
+
+openai.api_key = os.getenv("OPENAI_API_KEY")  # store your key in an env var
+
+# ---------------------------------------------------------------------
+# Core helper
+# ---------------------------------------------------------------------
+
+def prompt_blend_dialogue(
+    persona: str,
+    style: Optional[str],
+    scene: Optional[str],
+    user_input: str,
+    *,
+    model: str = "gpt-4o-mini",
+    temperature: float = 0.8,
+    max_tokens: int = 300,
+) -> str:
+    """
+    Compose a dialogue prompt from multiple fragments, then call the model.
+
+    Parameters
+    ----------
+    persona : str
+        The role or identity the assistant should adopt.
+    style : str | None
+        Optional stylistic or formatting instructions.
+    scene : str | None
+        Optional back-story or situational context.
+    user_input : str
+        The latest utterance from the end-user.
+    """
+    sys_parts: List[str] = [f"You are {persona}."]
+    if style:
+        sys_parts.append(style)
+    if scene:
+        sys_parts.append(f"Context: {scene}")
+
+    system_prompt = " ".join(sys_parts)
+
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_input},
+    ]
+
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+    return response.choices[0].message.content.strip()
+
+# ---------------------------------------------------------------------
+# Example usage
+# ---------------------------------------------------------------------
+
+if __name__ == "__main__":
+    reply = prompt_blend_dialogue(
+        persona="a witty Victorian detective with a penchant for dry humor",
+        style="Respond in short paragraphs, sprinkling in period-appropriate slang.",
+        scene="A dimly lit London alley, 1894.",
+        user_input="What clues did you find near the lamppost?",
+    )
+    print(reply)
