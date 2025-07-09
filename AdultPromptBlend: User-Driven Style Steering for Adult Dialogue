@@ -1,0 +1,68 @@
+# adult_prompt_blend.py
+"""
+AdultPromptBlend – steer NSFW-friendly dialogue with user prompt modifiers
+Requires: pip install openai
+Set OPENAI_API_KEY as env var before running.
+"""
+
+from typing import List, Dict, Optional
+import os, openai
+
+openai.api_key = os.getenv("OPENAI_API_KEY")  # export OPENAI_API_KEY="sk-..."
+
+def adult_dialogue(
+    base_persona: str,
+    base_scene: str,
+    user_modifier: str,
+    last_user_utterance: str,
+    *,
+    model: str = "gpt-4o-mini",
+    temperature: float = 0.85,
+    max_tokens: int = 300,
+) -> str:
+    """
+    Build a composite prompt and call the model.
+
+    Parameters
+    ----------
+    base_persona      e.g. "a flirty succubus bartender"
+    base_scene        e.g. "a dimly lit fantasy tavern"
+    user_modifier     e.g. "make it slow and romantic"
+    last_user_utterance
+    """
+    # ---- Assemble system prompt ---------------------------------------
+    sys_parts: List[str] = [
+        f"You are {base_persona}.",
+        f"Scene: {base_scene}.",
+        "The conversation is adult-oriented. Ensure consent and respectful tone.",
+    ]
+    if user_modifier:
+        sys_parts.append(f"Style request from user: {user_modifier}")
+
+    system_prompt = " ".join(sys_parts)
+
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": last_user_utterance},
+    ]
+
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    return response.choices[0].message.content.strip()
+
+
+# ----------------------------------------------------------------------
+# Demo
+# ----------------------------------------------------------------------
+if __name__ == "__main__":
+    reply = adult_dialogue(
+        base_persona="a charming vampire lord",
+        base_scene="a candle-lit gothic manor on a stormy night",
+        user_modifier="keep things playful, with subtle teasing",
+        last_user_utterance="Good evening, my lord. May I come in?",
+    )
+    print("Assistant:", reply)
