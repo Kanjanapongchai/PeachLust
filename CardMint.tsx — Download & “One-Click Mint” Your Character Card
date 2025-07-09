@@ -1,0 +1,104 @@
+/**
+ * CardMint.tsx
+ * React component that lets a user
+ * 1) download their character-card JSON (prompt + dialogue)
+ * 2) mint that JSON as an on-chain ERC-721 token in one click
+ *
+ * Requires:
+ *   npm i ethers nft.storage
+ *   // a deployed ERC-721 contract with `mintCard(address to, string tokenURI)`
+ *   // MetaMask (or any EIP-1193 provider) in browser
+ */
+
+import { useState } from 'react'
+import { ethers } from 'ethers'
+import { NFTStorage, File } from 'nft.storage'
+
+/* ------------------------------------------------------------------ */
+/* CONFIG – replace with your own values                              */
+/* ------------------------------------------------------------------ */
+const NFT_STORAGE_KEY = import.meta.env.VITE_NFT_STORAGE_KEY
+const CONTRACT_ADDRESS = '0xYourErc721Contract'
+const ABI = [
+  // minimal ABI: only the mint function you expose
+  'function mintCard(address to, string tokenURI) public returns (uint256)'
+]
+
+/* ------------------------------------------------------------------ */
+/* MAIN COMPONENT                                                     */
+/* ------------------------------------------------------------------ */
+interface CardMintProps {
+  characterName: string
+  prompt: string
+  dialogue: string[]
+}
+
+export default function CardMint({ characterName, prompt, dialogue }: CardMintProps) {
+  const [status, setStatus] = useState<string | null>(null)
+
+  /* --------------------- helper: build JSON blob ------------------- */
+  const buildJSON = () =>
+    JSON.stringify(
+      {
+        character: characterName,
+        prompt,
+        dialogue,
+        createdAt: new Date().toISOString()
+      },
+      null,
+      2
+    )
+
+  /* --------------------- 1) download as .json ---------------------- */
+  const handleDownload = () => {
+    const blob = new Blob([buildJSON()], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${characterName.replace(/\s+/g, '_')}_card.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  /* -------------- 2) upload to IPFS + mint NFT on chain ------------ */
+  const handleMint = async () => {
+    try {
+      setStatus('Connecting wallet…')
+      // 1. connect wallet
+      // @ts-ignore
+      await window.ethereum.request({ method: 'eth_requestAccounts' })
+      // @ts-ignore
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const signer = await provider.getSigner()
+      const address = await signer.getAddress()
+
+      // 2. upload to IPFS via NFT.storage
+      setStatus('Uploading metadata to IPFS…')
+      const nftStorage = new NFTStorage({ token: NFT_STORAGE_KEY })
+      const file = new File([buildJSON()], 'card.json', { type: 'application/json' })
+      const cid = await nftStorage.storeBlob(file)          // returns CID
+      const metadataURI = `ipfs://${cid}`
+
+      // 3. call contract.mintCard
+      setStatus('Minting on-chain…')
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer)
+      const tx = await contract.mintCard(address, metadataURI)
+      await tx.wait()
+
+      setStatus(`✅ Minted! Tx: ${tx.hash.slice(0, 10)}…`)
+    } catch (err: any) {
+      console.error(err)
+      setStatus(`❌ Error: ${err.message}`)
+    }
+  }
+
+  /* ------------------------------ UI ------------------------------- */
+  return (
+    <div style={{ border: '1px solid #ddd', padding: 16, borderRadius: 8 }}>
+      <h3>{characterName} — Card Tools</h3>
+      <button onClick={handleDownload}>Download JSON</button>{' '}
+      <button onClick={handleMint}>Mint as Token</button>
+      {status && <p style={{ marginTop: 8 }}>{status}</p>}
+    </div>
+  )
+}
