@@ -1,0 +1,26 @@
+// voiceover.ts
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { TextToSpeechClient } from '@google-cloud/text-to-speech';
+
+export async function synthesize(text: string, character = 'en-US-Studio-Q') {
+  const client = new TextToSpeechClient({
+    keyFilename: process.env.GCP_TTS_KEY,
+  });
+
+  const [response] = await client.synthesizeSpeech({
+    input: { text },
+    voice: { languageCode: 'en-US', name: character },
+    audioConfig: { audioEncoding: 'MP3' },
+  });
+
+  const out = path.resolve(`voice_${Date.now()}.mp3`);
+  await fs.writeFile(out, response.audioContent as Buffer, 'binary');
+  console.log('Voice file saved:', out);
+}
+
+if (require.main === module) {
+  synthesize('Welcome to PeachLust, darling. What do you desire today?').catch(
+    console.error
+  );
+}
