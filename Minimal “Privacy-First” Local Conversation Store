@@ -1,0 +1,67 @@
+/* src/lib/localConversationStore.ts
+   --------------------------------------------------------------------
+   Uses the ultra-light `idb-keyval` wrapper for IndexedDB.
+   npm i idb-keyval
+--------------------------------------------------------------------- */
+
+import { get, set } from 'idb-keyval'
+
+export interface Message {
+  role: 'user' | 'assistant'
+  content: string
+  ts: number           // epoch ms; useful for sorting
+}
+
+const KEY_PREFIX = 'pl_session/'  // namespace
+
+/* ------------------------------------------------------------------ */
+/* Load the full message history for a given session ID               */
+/* ------------------------------------------------------------------ */
+export async function loadHistory(sessionId: string): Promise<Message[]> {
+  return (await get(KEY_PREFIX + sessionId)) ?? []
+}
+
+/* ------------------------------------------------------------------ */
+/* Append a message and save back to IndexedDB                        */
+/* ------------------------------------------------------------------ */
+export async function saveMessage(
+  sessionId: string,
+  msg: Omit<Message, 'ts'>          // we’ll stamp ts automatically
+) {
+  const history = await loadHistory(sessionId)
+  history.push({ ...msg, ts: Date.now() })
+  await set(KEY_PREFIX + sessionId, history)
+}
+
+/* ------------------------------------------------------------------ */
+/* Wipe a session completely (e.g., user hits “Clear Chat”)           */
+/* ------------------------------------------------------------------ */
+export async function deleteSession(sessionId: string) {
+  await set(KEY_PREFIX + sessionId, [])
+}
+
+import { useEffect, useState } from 'react'
+import { loadHistory, saveMessage, Message } from './lib/localConversationStore'
+
+const SESSION_ID = 'demo'   // or whatever you generate per chat
+
+export default function App() {
+  const [messages, setMessages] = useState<Message[]>([])
+
+  // 1) on first mount, hydrate from local store
+  useEffect(() => {
+    loadHistory(SESSION_ID).then(setMessages)
+  }, [])
+
+  // 2) when the user sends something
+  async function handleSend(userText: string) {
+    const userMsg: Omit<Message, 'ts'> = { role: 'user', content: userText }
+    setMessages((m) => [...m, { ...userMsg, ts: Date.now() }])
+    await saveMessage(SESSION_ID, userMsg)
+
+    // … call your LLM API here, then:
+    const botMsg: Omit<Message, 'ts'> = { role: 'assistant', content: botReply }
+    setMessages((m) => [...m, { ...botMsg, ts: Date.now() }])
+    await saveMessage(SESSION_ID, botMsg)
+  }
+}
